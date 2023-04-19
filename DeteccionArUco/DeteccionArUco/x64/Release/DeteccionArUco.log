@@ -1,0 +1,13 @@
+﻿  Main.cpp
+C:\Users\fanny\source\repos\DeteccionArUco\DeteccionArUco\Deteccion.cpp(425,23): warning C4244: 'inicializando': conversión de '_Rep' a 'double'; posible pérdida de datos
+          with
+          [
+              _Rep=__int64
+          ]
+C:\Users\fanny\source\repos\DeteccionArUco\DeteccionArUco\Main.cpp(12,6): warning C4101: 'valor': variable local sin referencia
+  Generando código
+  1 of 705 functions ( 0.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    1 functions had inline decision re-evaluated but remain unchanged
+  Generación de código finalizada
+  DeteccionArUco.vcxproj -> C:\Users\fanny\source\repos\DeteccionArUco\x64\Release\DeteccionArUco.exe

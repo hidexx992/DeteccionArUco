@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <time.h>
@@ -15,17 +15,53 @@ using namespace cv;
 using namespace std;
 
 
+void inicializarCubo() {
+	cv::Mat axis = (cv::Mat_<float>(4, 3) << 3, 0, 0, 0, 3, 0, 0, 0, -3, 0, 0, 0);
+	// this creates a matrix with 4 rows and 3 columns, 
+	//containing the coordinates for the points to draw the x, y, and z axis. 
+	//The fourth row is initialized with 0,0,0 to make the matrix homogeneous.
+}
 
+void resolverPose(vector<cv::Point3f> objectPoints, vector<cv::Point2f> corners1, Mat cameraMatrix, Mat distCoeffs, Mat &rvec, Mat &tvec) {
+	solvePnP(objectPoints, corners1, cameraMatrix, distCoeffs, rvec, tvec);
+	std::vector<cv::Point2f> projectedPoints;
+	cv::projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs, projectedPoints);
+	for (unsigned int i = 0; i < projectedPoints.size(); ++i)
+	{
+		std::cout << "Image point: " << corners1[i] << " Projected to " << projectedPoints[i] << std::endl;
+	}
+}
 
+cv::Mat drawAxis(cv::Mat img, cv::Mat corners, cv::Mat imgpts) {
+	cv::Point3f corner = cv::Point3f(corners.at<float>(0, 0), corners.at<float>(0, 1), corners.at<float>(0, 2));
+	cv::line(img, cv::Point(corner.x, corner.y), cv::Point(imgpts.at<float>(0, 0), imgpts.at<float>(0, 1)), cv::Scalar(255, 0, 0), 5);
+	cv::line(img, cv::Point(corner.x, corner.y), cv::Point(imgpts.at<float>(1, 0), imgpts.at<float>(1, 1)), cv::Scalar(0, 255, 0), 5);
+	cv::line(img, cv::Point(corner.x, corner.y), cv::Point(imgpts.at<float>(2, 0), imgpts.at<float>(2, 1)), cv::Scalar(0, 0, 255), 5);
+	return img;
+}
+
+cv::Mat draw_cube(cv::Mat img, cv::Mat corners, cv::Mat imgpts) {
+	cv::Mat imgpts_int;
+	imgpts.convertTo(imgpts_int, CV_32S);
+	std::vector<std::vector<cv::Point>> contours = { std::vector<cv::Point>(imgpts_int.rowRange(0, 4)) };
+	cv::drawContours(img, contours, -1, cv::Scalar(0, 255, 0), 3);
+	for (int i = 0; i < 4; i++) {
+		cv::line(img, cv::Point(imgpts_int.at<int>(i, 0), imgpts_int.at<int>(i, 1)),
+			cv::Point(imgpts_int.at<int>(i + 4, 0), imgpts_int.at<int>(i + 4, 1)), cv::Scalar(255), 3);
+	}
+	contours = { std::vector<cv::Point>(imgpts_int.rowRange(4, 8)) };
+	cv::drawContours(img, contours, -1, cv::Scalar(0, 0, 255), 3);
+	return img;
+}
 
 vector<Mat> cargarImagenes() {
 	vector<Mat> aruco_images;
-	for (int i = 0; i < n_images; i++) {
+	for (int i = 0; i < n_markers; i++) {
 		string filename = "./imagenes/MarcadoresAruco/4x4_1000-";
 		filename += to_string(i);
 		filename += ".png";
 		cout << "Leyendo " << filename << endl;
-		Mat aruco_marker = imread(filename, IMREAD_GRAYSCALE);
+		Mat aruco_marker = imread(filename);
 		if (aruco_marker.empty()) {
 			cerr << "Error: no se pudo leer la imagen " << filename << endl;
 			exit(1);
@@ -34,6 +70,7 @@ vector<Mat> cargarImagenes() {
 	}
 	return aruco_images;
 }
+
 vector<vector<int>> bordesNegros(vector<vector<int>> result_matrix) //Matrix 6x6
 {
 	result_matrix[0] = { 0,0,0,0,0,0 };
@@ -113,6 +150,8 @@ vector<vector<vector<int>>> generarMatricesImagenes(vector<Mat> aruco_images) {
 	return aruco_images_matrixs;
 }
 
+
+
 void getCamMatrix_and_distCoeff(String ruta_fichero, Mat& matriz_camara_m, Mat& coeff_dist_m) {
 	//Leer cada línea
 	String linea;
@@ -127,6 +166,7 @@ void getCamMatrix_and_distCoeff(String ruta_fichero, Mat& matriz_camara_m, Mat& 
 		cout << "No se pudo abrir el archivo" << endl;
 		exit(1);
 	}
+
 	// Leer línea por línea del archivo
 	while (getline(archivo, linea)) {
 		// Leer los valores de la línea actual
@@ -136,6 +176,7 @@ void getCamMatrix_and_distCoeff(String ruta_fichero, Mat& matriz_camara_m, Mat& 
 			valores.push_back(valor);
 		}
 	}
+
 	//Guardar valores en Matriz Camara
 	cout << "Matriz Camara" << endl;
 	int k = 0;
@@ -155,7 +196,6 @@ void getCamMatrix_and_distCoeff(String ruta_fichero, Mat& matriz_camara_m, Mat& 
 		cout << valores[i] << endl;
 		k++;
 	}
-
 	//Convertir las matrices en objetos Mat
 	matriz_camara_m = Mat(3, 3, CV_64FC1, matriz_camara);
 	coeff_dist_m = Mat(5, 1, CV_64FC1, coeff_dist);
@@ -188,13 +228,12 @@ vector<Point2f> ordenarPuntos_f(vector<Point2f> approx) {
 }
 
 
-
 void deteccion(String ruta_video, String ruta_fichero) {
-
 	/*Variables*/
 	//Crear el objeto de tipo VideoCapture
 	VideoCapture captura = VideoCapture(ruta_video);
 	//VideoCapture captura = VideoCapture(CAMARA_0);
+	
 	//Frames
 	Mat frame;
 	//Tecla presionada
@@ -209,7 +248,7 @@ void deteccion(String ruta_video, String ruta_fichero) {
 	/*Obtener matriz de cámara y coeficientes de */
 	Mat cameraMatrix, distCoeffs;
 	getCamMatrix_and_distCoeff(ruta_fichero, cameraMatrix, distCoeffs);
-	
+
 	if (!captura.isOpened()) {
 		cout << "Error al cargar el video!" << endl;
 		exit(1);
@@ -217,11 +256,13 @@ void deteccion(String ruta_video, String ruta_fichero) {
 	//Seguimiento del tiempo transcurrido para calcular FPS
 	auto start = chrono::steady_clock::now();
 	double fps;
+
 	//Cuántas veces detecta si hay más 1 contorno
 	int error = 0;
 	int id_error = 0;
 	int correcta_teccion = 0;
 	int error_id = 0;
+
 
 	while (1) {
 		//Se lee el video imagen a imagen
@@ -231,10 +272,13 @@ void deteccion(String ruta_video, String ruta_fichero) {
 			cout << "Se ha llegado al final del video" << endl;
 			break;
 		}
-		
 		//Conversion a Escala de Grises
 		Mat gray;
 		cvtColor(frame, gray, COLOR_BGR2GRAY);
+		//Filtro Gaussiano
+		GaussianBlur(gray, gray, Size(3, 3), 0, 0);
+		namedWindow("Escala de Grises con filtro", WINDOW_AUTOSIZE);
+		imshow("Escala de Grises con filtro", gray);
 		//Amplitud de la escala
 		Mat thresh, equalized;
 		equalizeHist(gray, equalized);
@@ -251,6 +295,7 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		//Inicializa un vector para almacenar las esquinas
 		vector<vector<Point> > corners; //las esquinas de todos los marcadores
 		vector<vector<Point2f> > corners_f; //las esquinas de todos los marcadores
+		
 		//Cuantos contornos hay
 		/////////////////////////
 		//vector<Point3f> axis;
@@ -258,7 +303,7 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		//axis.push_back(cv::Point3f(0, 3, 0));
 		//axis.push_back(cv::Point3f(0, 0, -3));
 		/////////////////////////
-		
+
 		for (size_t i = 0; i < contours.size(); i++) {
 			double area = contourArea(contours[i]);
 			if (area > 2700) {
@@ -277,8 +322,8 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		}
 		
 		
-	
-vector<Point2f> square_points;
+
+		vector<Point2f> square_points;
 		
 		//Cuando el tamaño del marcador es 4x4, el tamaño incluyendo el borde negro es 6x6
 		//Si el ancho de píxel de una celda se establece en 10 al dividir la imagen en una cuadrícula en un paso posterior
@@ -348,9 +393,7 @@ vector<Point2f> square_points;
 		}
 		
 		result_matrix.clear();
-		
-		
-		
+
 		/*Poner texto en imagen*/
 		//string letrero = "Objetos: ";// + to_string(total);
 		//putText(frame, letrero, Point(10, 150), FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2);
@@ -409,5 +452,7 @@ vector<Point2f> square_points;
 	destroyAllWindows();
 
 }
-	
+
+
+
 	

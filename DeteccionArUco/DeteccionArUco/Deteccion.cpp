@@ -8,8 +8,8 @@
 #define TECLA_ESCAPE 27 //ASCII
 #define TECLA_a 97 
 #define TECLA_A 65 
-const int n_images = 10;
-const int MIN_MATCH_COUNT = 10;
+#define CAMARA_0 0
+const int n_markers = 10;
 
 using namespace cv;
 using namespace std;
@@ -18,11 +18,10 @@ using namespace std;
 
 
 
-
 vector<Mat> cargarImagenes() {
 	vector<Mat> aruco_images;
 	for (int i = 0; i < n_images; i++) {
-		string filename = "./imagenes/MarcadoresAruco/4x4_1000_";
+		string filename = "./imagenes/MarcadoresAruco/4x4_1000-";
 		filename += to_string(i);
 		filename += ".png";
 		cout << "Leyendo " << filename << endl;
@@ -34,6 +33,84 @@ vector<Mat> cargarImagenes() {
 		aruco_images.push_back(aruco_marker);
 	}
 	return aruco_images;
+}
+vector<vector<int>> bordesNegros(vector<vector<int>> result_matrix) //Matrix 6x6
+{
+	result_matrix[0] = { 0,0,0,0,0,0 };
+	result_matrix[5] = { 0,0,0,0,0,0 };
+	result_matrix[1][0] = 0;
+	result_matrix[2][0] = 0;
+	result_matrix[3][0] = 0;
+	result_matrix[4][0] = 0;
+	result_matrix[1][5] = 0;
+	result_matrix[2][5] = 0;
+	result_matrix[3][5] = 0;
+	result_matrix[4][5] = 0;
+	return result_matrix;
+
+}
+
+int determinarID(vector<vector<vector<int>>> aruco_images_matrixs, vector<vector<int>> result_matrix) {
+	int id;
+	for (int i = 0; i < 40; i++) 
+	{
+		if (std::equal(result_matrix.begin(), result_matrix.end(), aruco_images_matrixs[i].begin())) // comparar vectores de matrices
+		{
+			if ((i >= 0) && (i < 4)) id = 0;
+			else if ((i >= 4) && (i < 8)) id = 1;
+			else if ((i >= 8) && (i < 12)) id = 2;
+			else if ((i >= 12) && (i < 16)) id = 3;
+			else if ((i >= 16) && (i < 20)) id = 4;
+			else if ((i >= 20) && (i < 24)) id = 5;
+			else if ((i >= 24) && (i < 28)) id = 6;
+			else if ((i >= 28) && (i < 32)) id = 7;
+			else if ((i >= 32) && (i < 36)) id = 8;
+			else if ((i >= 36) && (i < 40)) id = 9;
+			break;
+		}
+		else {
+			id = -1;
+		}
+	}
+	return id;
+}
+
+vector<vector<vector<int>>> generarMatricesImagenes(vector<Mat> aruco_images) {
+	vector<vector<vector<int>>> aruco_images_matrixs(0);
+	
+	for(int i = 0 ; i < aruco_images.size(); i++)
+	{
+		
+		resize(aruco_images[i], aruco_images[i], Size(60, 60), 0, 0, INTER_LINEAR);
+		cvtColor(aruco_images[i], aruco_images[i], COLOR_BGR2GRAY);
+		threshold(aruco_images[i], aruco_images[i], 125, 255, THRESH_BINARY | THRESH_OTSU);
+		int cellSize = aruco_images[i].rows / 6;
+
+		vector <vector<int>> aruco_matrix(0); // Inicializar con ceros
+		vector <int> aruco_vector(0); // Inicializar con ceros
+		
+		for (int j = 0; j < 4; j++)
+		{
+			for (int y = 0; y < 6; y++)
+			{
+				for (int x = 0; x < 6; x++) //+= inc)
+				{
+					int cellX = x * cellSize;
+					int cellY = y * cellSize;
+					Mat cell = aruco_images[i](Rect(cellX, cellY, cellSize, cellSize)); //Celdas 
+					int cellValue = cv::sum(cell)[0]; // suma de los valores de píxeles en la celda
+					int msbValue = (cellValue >> 7) & 1; // valor del bit más significativo
+					aruco_vector.push_back (msbValue);
+				}
+				aruco_matrix.push_back(aruco_vector);
+				aruco_vector.clear();
+			}
+			aruco_images_matrixs.push_back(aruco_matrix);
+			aruco_matrix.clear();
+			rotate(aruco_images[i], aruco_images[i], ROTATE_90_CLOCKWISE);
+		}
+	}
+	return aruco_images_matrixs;
 }
 
 void getCamMatrix_and_distCoeff(String ruta_fichero, Mat& matriz_camara_m, Mat& coeff_dist_m) {
@@ -83,217 +160,56 @@ void getCamMatrix_and_distCoeff(String ruta_fichero, Mat& matriz_camara_m, Mat& 
 	matriz_camara_m = Mat(3, 3, CV_64FC1, matriz_camara);
 	coeff_dist_m = Mat(5, 1, CV_64FC1, coeff_dist);
 }
-/*
-void homography(Mat frame_desc, vector<KeyPoint> frame_kps, Mat frame_image, Mat aruco_desc, 
-	vector<KeyPoint> aruco_kps, Mat aruco_image) 
-{
-	//Emparejar los descriptores 
-	Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce");
-	vector<DMatch> matches;
-	matcher->match(aruco_desc, frame_desc, matches);
-	double min_dist = 10000;
-	double max_dist = 0;
 
-
-	// Seleccionar las mejores correspondencias (por distancia)
-	for (int i = 0; i < aruco_desc.rows; i++) {
-		double dist = matches[i].distance;
-		if (dist < min_dist) min_dist = dist;
-		if (dist > max_dist) max_dist = dist;
-	}
-	cout << "Max dist: " << max_dist << endl;
-	cout << "Min dist: " << min_dist << endl;
-	
-
-	vector<DMatch> good_matches;
-	for (int i = 0; i < aruco_desc.rows; i++) {
-		if (matches[i].distance < 2 * min_dist) {
-			good_matches.push_back(matches[i]);
-		}
-	}
-
-	Mat img_matches;
-	drawMatches(aruco_image, aruco_kps, frame_image, frame_kps, good_matches, 
-	img_matches, Scalar::all(-1), Scalar::all(-1), std::vector<char>(), 
-		DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-	
-	//-- Paso 5: Localizamos el objeto
-	vector<Point2f> obj;
-	vector<Point2f> scene;
-	for (int i = 0; i < good_matches.size(); i++) {
-		//-- Get the keypoints from the good matches
-		obj.push_back(aruco_kps[good_matches[i].queryIdx].pt);
-		scene.push_back(frame_kps[good_matches[i].trainIdx].pt);
-	}
-
-	Mat H = findHomography(obj, scene, RANSAC, 5.0);
-	
-	//-- Tomamos las esquinas d ela imagen del objeto
-	vector<Point2f> obj_corners(4);
-	obj_corners[0] = Point(0, 0); 
-	obj_corners[1] = Point(aruco_image.cols, 0);
-	obj_corners[2] = Point(aruco_image.cols, aruco_image.rows); 
-	obj_corners[3] = Point(0, aruco_image.rows);
-	vector<Point2f> scene_corners(4);
-	// Proyectamos usando la homografia
-	perspectiveTransform(obj_corners, scene_corners, H);
-	
-	//-- Dibujamos las lineas (hay q trasladar Point2f(img_object.cols, 0) a la dcha
-
-	line(img_matches, scene_corners[0] + Point2f(aruco_image.cols, 0), scene_corners[1] + Point2f(aruco_image.cols, 0), Scalar(0, 255, 0), 4);
-	line(img_matches, scene_corners[1] + Point2f(aruco_image.cols, 0), scene_corners[2] + Point2f(aruco_image.cols, 0), Scalar(0, 255, 0), 4);
-	line(img_matches, scene_corners[2] + Point2f(aruco_image.cols, 0), scene_corners[3] + Point2f(aruco_image.cols, 0), Scalar(0, 255, 0), 4);
-	line(img_matches, scene_corners[3] + Point2f(aruco_image.cols, 0), scene_corners[0] + Point2f(aruco_image.cols, 0), Scalar(0, 255, 0), 4);
-
-	//-- Mostramos la deteccion
-	namedWindow("Emparejamientos & Deteccion", WINDOW_NORMAL); // Crear ventana
-	imshow("Emparejamientos & Deteccion", img_matches);
-
-
-	resizeWindow("Emparejamientos & Deteccion", 640, 480); // Cambiar tamaño de la ventana
-	cout << "good_matches " << good_matches.size() << endl;
-
-	// Vamos a ver cuales son los q han deterninado la homografia
-	vector< DMatch > homografy_matches;
-	for (int i = 0; i < good_matches.size(); i++) {
-		Point2f pto_objeto, pto_imagen, proyeccion_imagen;
-		pto_objeto = aruco_kps[good_matches[i].queryIdx].pt;
-		pto_imagen = frame_kps[good_matches[i].trainIdx].pt;
-
-		// La homografia multiplica una matriz de 3x3 por un vector 3
-		Mat punto = Mat(3, 1, CV_64F);
-		punto.at<double>(0) = pto_objeto.x;
-		punto.at<double>(1) = pto_objeto.y;
-		punto.at<double>(2) = 1.0;
-		// Proyectamos
-		punto = H * punto;
-		punto /= punto.at<double>(2);
-
-		proyeccion_imagen.x = punto.at<double>(0);
-		proyeccion_imagen.y = punto.at<double>(1);
-
-		float dist = sqrt(pow(pto_imagen.x - proyeccion_imagen.x, 2) + pow(pto_imagen.y - proyeccion_imagen.y, 2));
-
-		if (dist < 3) homografy_matches.push_back(good_matches[i]);
-	}
-	cout << "Homografia " << homografy_matches.size() << endl;
-
-	Mat img_homografia;
-	drawMatches(aruco_image, aruco_kps, frame_image, frame_kps, homografy_matches, img_homografia, 
-		Scalar::all(-1), Scalar::all(-1), std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-	namedWindow("homografia", WINDOW_NORMAL); // Crear ventana
-	imshow("homografia", img_homografia);
-	
-}*/
-
-void convertImgToMat(Mat aruco_img, Mat mat) {
-	int cell_size = aruco_img.rows / 6;
-	for (int i = 1; i < 5; i++) {
-		for (int j = 1; j < 5; j++) {
-			int centerX = cell_size * i + cell_size / 2;
-			int centerY = cell_size * j + cell_size / 2;
-			cout << "(" << centerX << ", " << centerY << ") = " << aruco_img.at<int>(centerX, centerY) << endl;
-			if (aruco_img.at<int>(centerX, centerY) > 128) {
-				mat.at<int>(i - 1, j - 1) = 1;
-			}
-			else {
-				mat.at<int>(i - 1, j - 1) = 0;
-			}
-		}
-	}
+vector<Point> ordenarPuntos(vector<Point> approx){
+	vector<Point> points; //Puntos
+	for (int j = 0; j < 4; j++)
+		points.push_back(Point(approx[j].x, approx[j].y));
+	// Ordenar en sentido contrario a las agujas del reloj
+	Point v1 = points[1] - points[0];
+	Point v2 = points[2] - points[0];
+	double o = (v1.x * v2.y) - (v1.y * v2.x);
+	if (o < 0.0)
+		swap(points[1], points[3]);
+	return points;
 }
 
-void convertImagesToMat(vector<Mat> arucoMats) {
-	for (int i = 0; i < 1; i++) {
-		String filename = "./imagenes/MarcadoresAruco/4x4_1000-" + to_string(i) + ".png";
-		Mat aruco_img = imread(filename, IMREAD_GRAYSCALE);
-		Mat mat = Mat(4, 4, CV_32SC1);
-		cout << "Image: " << i << endl;
-		convertImgToMat(aruco_img, mat);
-		cout << mat << endl;
-		arucoMats.push_back(mat);
-	}
+vector<Point2f> ordenarPuntos_f(vector<Point2f> approx) {
+	vector<Point2f> points; //Puntos
+	for (int j = 0; j < 4; j++)
+		points.push_back(Point2f(approx[j].x, approx[j].y));
+	// Ordenar en sentido contrario a las agujas del reloj
+	Point v1 = points[1] - points[0];
+	Point v2 = points[2] - points[0];
+	double o = (v1.x * v2.y) - (v1.y * v2.x);
+	if (o < 0.0)
+		swap(points[1], points[3]);
+	return points;
 }
 
 
-
-
-void determineId(Mat resultImg) {
-
-}
-
-/*
-// Compare two images by getting the L2 error (square-root of sum of squared error).
-void getSimilarity(const cv::Mat A, const cv::Mat B, int i) {
-	Mat gray_A, gray_B;
-	//Gris
-	cvtColor(A, gray_A, COLOR_BGR2GRAY);
-	cvtColor(A, gray_B, COLOR_BGR2GRAY);
-	//Filtro Gaussiano
-	GaussianBlur(gray_A, gray_A, Size(3, 3), 0, 0);
-	GaussianBlur(gray_B, gray_B, Size(3, 3), 0, 0);
-	//Umbralizacion
-	Mat thresh_A, thresh_B;
-	adaptiveThreshold(gray_A, thresh_A, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV, 31, 0);
-	adaptiveThreshold(gray_B, thresh_B, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV, 31, 0);
-	//Transformaciones morfologicas
-	thresh_A = 255 - thresh_A;
-	thresh_B = 255 - thresh_B;
-	Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
-	Mat rect_A = thresh_A.clone();
-	Mat rect_B = thresh_B.clone();
-	morphologyEx(rect_A, rect_A, MORPH_OPEN, kernel);
-	morphologyEx(rect_B, rect_B, MORPH_ERODE, kernel);
-
-	if (rect_A.rows > 0 && rect_A.rows == rect_B.rows && rect_A.cols > 0 && rect_A.cols == rect_B.cols) {
-		// Calculate the L2 relative error between images.
-		double errorL2 = cv::norm(rect_A, rect_B, cv::NORM_L2);
-		// Convert to a reasonable scale, since L2 error is summed across all pixels of the image.
-		double similarity = errorL2 / static_cast<double>(rect_A.rows * rect_A.cols);
-		cout << "Similitud" << similarity << endl;
-		cout << "Similar a imagen " << i << endl;
-	}
-	else {
-		// Images have a different size.
-		cout << "No es similar con la imagen " << i << endl;
-	}
-	
-}
-*/
 
 void deteccion(String ruta_video, String ruta_fichero) {
 
 	/*Variables*/
 	//Crear el objeto de tipo VideoCapture
 	VideoCapture captura = VideoCapture(ruta_video);
+	//VideoCapture captura = VideoCapture(CAMARA_0);
 	//Frames
 	Mat frame;
 	//Tecla presionada
 	char pressedKey = 0;
 	//Selección dibujo 
 	int dibujo = 0;
-	/*Leer las imágenes y etiquetas*/
+	/*Leer las imágenes*/
 	vector<Mat> aruco_images;
-	vector<int> markerIds = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 	aruco_images = cargarImagenes();
+	/*Generar matrices binarias de las imagenes*/
+	vector <vector<vector<int>>> aruco_images_matrixs = generarMatricesImagenes(aruco_images);
 	/*Obtener matriz de cámara y coeficientes de */
 	Mat cameraMatrix, distCoeffs;
 	getCamMatrix_and_distCoeff(ruta_fichero, cameraMatrix, distCoeffs);
-	/*Descriptores*/
-	Ptr<SIFT> detector = SIFT::create();
-	vector <Mat> aruco_descriptors;
-	vector<vector<KeyPoint>> aruco_keypoints;
-	for (int i = 0; i < n_images; i++) {
-		Mat desc;
-		vector<KeyPoint> kp; 
-		detector->detectAndCompute(aruco_images[i], Mat(), kp, desc);
-		aruco_descriptors.push_back(desc);
-		aruco_keypoints.push_back(kp);
-	}
 	
-	
-
- 
 	if (!captura.isOpened()) {
 		cout << "Error al cargar el video!" << endl;
 		exit(1);
@@ -301,13 +217,11 @@ void deteccion(String ruta_video, String ruta_fichero) {
 	//Seguimiento del tiempo transcurrido para calcular FPS
 	auto start = chrono::steady_clock::now();
 	double fps;
-
-
-	//vector<Mat> arucoMats;
-	//convertImagesToMat(arucoMats);
-	
 	//Cuántas veces detecta si hay más 1 contorno
 	int error = 0;
+	int id_error = 0;
+	int correcta_teccion = 0;
+	int error_id = 0;
 
 	while (1) {
 		//Se lee el video imagen a imagen
@@ -317,109 +231,130 @@ void deteccion(String ruta_video, String ruta_fichero) {
 			cout << "Se ha llegado al final del video" << endl;
 			break;
 		}
-		//Descriptores 
-		vector<KeyPoint> frameKeypoints;
-		Mat frameDescriptors;
-		detector->detectAndCompute(frame, Mat(), frameKeypoints, frameDescriptors);
 		
-
-
 		//Conversion a Escala de Grises
 		Mat gray;
 		cvtColor(frame, gray, COLOR_BGR2GRAY);
-		//Filtro Gaussiano
-		GaussianBlur(gray, gray, Size(3, 3), 0, 0);
-		namedWindow("Escala de Grises con filtro", WINDOW_AUTOSIZE);
-		imshow("Escala de Grises con filtro", gray);
-		//Umbralizacion
-		Mat thresh;
-		adaptiveThreshold(gray, thresh, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 17, 0);
-		//Transformaciones morfologicas
-		thresh = 255 - thresh;
-		Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
-		Mat rect = thresh.clone();
-		morphologyEx(rect, rect, MORPH_OPEN, kernel);
-		morphologyEx(rect, rect, MORPH_ERODE, kernel);
-		imshow("Eliminar ruido - Imagen Binaria", rect);
-
-		/////////////////////////
-		std::vector<cv::Point3f> object_points;
-		object_points.push_back(cv::Point3f(0, 0, 0));
-		object_points.push_back(cv::Point3f(0, 591, 0));
-		object_points.push_back(cv::Point3f(591, 0, 0));
-		object_points.push_back(cv::Point3f(591, 591, 0));
-
-		vector<Point3f> axis;
-		axis.push_back(cv::Point3f(3, 0, 0));
-		axis.push_back(cv::Point3f(0, 3, 0));
-		axis.push_back(cv::Point3f(0, 0, -3));
-
-
-		/////////////////////////
-		
+		//Amplitud de la escala
+		Mat thresh, equalized;
+		equalizeHist(gray, equalized);
+		//Umbralización para binarizar la imagen
+		adaptiveThreshold(equalized, thresh,
+			255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 21, 3);
 		//Encontrar contornos
+		Mat contour_image = thresh.clone();
 		vector<vector<Point>> contours;
-		findContours(rect, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+		findContours(contour_image, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+		//Aproximar el contorno
+		vector<Point2f> approx_f; //Las esquinas
+		vector<Point> approx;     //Esquinas  
 		//Inicializa un vector para almacenar las esquinas
-		vector<vector<Point>> corners;
+		vector<vector<Point> > corners; //las esquinas de todos los marcadores
+		vector<vector<Point2f> > corners_f; //las esquinas de todos los marcadores
 		//Cuantos contornos hay
-		int total = 0;
+		/////////////////////////
+		//vector<Point3f> axis;
+		//axis.push_back(cv::Point3f(3, 0, 0));
+		//axis.push_back(cv::Point3f(0, 3, 0));
+		//axis.push_back(cv::Point3f(0, 0, -3));
+		/////////////////////////
 		
 		for (size_t i = 0; i < contours.size(); i++) {
 			double area = contourArea(contours[i]);
-			// cout << "area " << area << endl;
 			if (area > 2700) {
-				// Aproximación de contorno
-				double peri = arcLength(contours[i], true); // Perimetro
-				vector<Point> approx;
-				vector<Point2f> approx_f;
+				// Perimetro
+				double peri = arcLength(contours[i], true); 
+				//Aproximacion del contorno
 				approxPolyDP(contours[i], approx_f, 0.02 * peri, true);
 				approxPolyDP(contours[i], approx, 0.02 * peri, true);
 				// Si el polígono tiene cuatro lados y es convexo, entonces es un cuadrado
-				if ((approx.size() == 4) && (isContourConvex(approx) == true))
+				if ((approx_f.size() == 4) && (isContourConvex(approx) == true))
 				{
-					Mat resultImg; // marker image after removing perspective
-					int resultImgSize = 500;
-					Mat resultImgCorners(4, 1, CV_32FC2);
-					resultImgCorners.ptr<Point2f>(0)[0] = Point2f(0, 0);
-					resultImgCorners.ptr<Point2f>(0)[1] = Point2f((float)resultImgSize - 1, 0);
-					resultImgCorners.ptr<Point2f>(0)[2] =
-						Point2f((float)resultImgSize - 1, (float)resultImgSize - 1);
-					resultImgCorners.ptr<Point2f>(0)[3] = Point2f(0, (float)resultImgSize - 1);
-
-					// remove perspective
-					Mat transformation = getPerspectiveTransform(approx_f, resultImgCorners);
-					warpPerspective(frame, resultImg, transformation, Size(resultImgSize, resultImgSize),
-						INTER_NEAREST);
-					namedWindow("result", WINDOW_AUTOSIZE);
-					imshow("result", resultImg);
-					drawContours(frame, vector<vector<Point>>{approx}, 0, Scalar(0, 255, 0), 3, LINE_AA);
-					// Agrega las esquinas del cuadrado al vector de esquinas
-					corners.push_back(approx);
-					// Calcula el punto central del cuadrado
-					Point center((approx[0].x + approx[2].x) / 2, (approx[0].y + approx[2].y) / 2);
-					// Escribe un texto en el punto central del cuadrado
-					String text = "ID =" + to_string(corners.size());
-					putText(frame, text, center, FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 0, 255), 2);
-					total++; //Número de objetos detectados
-					cout << "Contornos encontrados: " << total << endl;
-				}
-				if (total > 1) {
-					error++;
+					corners.push_back(ordenarPuntos(approx));
+					corners_f.push_back(ordenarPuntos_f(approx_f));
 				}
 			}
 		}
 		
+		
 	
+vector<Point2f> square_points;
+		
+		//Cuando el tamaño del marcador es 4x4, el tamaño incluyendo el borde negro es 6x6
+		//Si el ancho de píxel de una celda se establece en 10 al dividir la imagen en una cuadrícula en un paso posterior
+		//La longitud de un lado de la imagen del marcador es 60	
+		int marker_image_side_length = 60; 
+		square_points.push_back(Point2f(0, 0));
+		square_points.push_back(Point2f(marker_image_side_length - 1, 0));
+		square_points.push_back(Point2f(marker_image_side_length - 1, marker_image_side_length - 1));
+		square_points.push_back(Point2f(0, marker_image_side_length - 1));
+		
+		Mat marker_image;
+		vector <vector<int>> result_matrix(0); // Inicializar con ceros
+		for (int i = 0; i < corners_f.size(); i++)
+		{
+			vector<Point2f> m = corners_f[i];
+			//Obtenga una matriz de transformación de perspectiva para transformar el marcador en un rectángulo.
+			Mat PerspectiveTransformMatrix = getPerspectiveTransform(m, square_points);
+			//Aplicar transformación de perspectiva. 
+			warpPerspective(gray, marker_image, PerspectiveTransformMatrix,
+				Size(marker_image_side_length, marker_image_side_length));
+			//Aplicar la binarización por el método otsu.
+			threshold(marker_image, marker_image, 127, 255, THRESH_BINARY | THRESH_OTSU);
+			// Definimos el kernel
+			Mat kernel = Mat::ones(6, 6, CV_8UC1);
+			// Aplicamos la operación de erosión
+			erode(marker_image, marker_image, kernel);
+			//El tamaño del marcador es 4, y el tamaño incluyendo el borde negro es 6
+			int cellSize = marker_image.rows / 6;
+			imshow("result", marker_image);
+			vector <int> result_vector(0); // Inicializar con ceros
+			for (int y = 0; y < 6; y++)
+			{
+				for (int x = 0; x < 6; x++) //+= inc)
+				{
+					int cellX = x * cellSize;
+					int cellY = y * cellSize;
+					Mat cell = marker_image(Rect(cellX, cellY, cellSize, cellSize)); //Celdas negras
+					
+					int cellValue = cv::sum(cell)[0]; // suma de los valores de píxeles en la celda
+					int msbValue = (cellValue >> 7) & 1; // valor del bit más significativo
+					result_vector.push_back(msbValue);					
+					imshow("Celda", cell);
+					
+				}
+				result_matrix.push_back(result_vector);
+				
+				result_vector.clear();
+			}
 
-		cout << "Esquinas" << endl;
-		for (vector<Point> corner : corners) {
-			cout <<  corner  << endl;
+			result_matrix = bordesNegros(result_matrix);
+			int id = determinarID(aruco_images_matrixs, result_matrix);
+			cout << "ID = " << id  <<endl;
+			if (id == -1) {
+				break;
+			}
+			int centerX = 0; int centerY = 0;
+			int sumX = 0; int sumY = 0;
+			for (int j = 0; j < 4; j++) {
+				sumX += corners[i][j].x;
+				sumY += corners[i][j].y;
+			}
+			centerX = sumX / corners[i].size();
+			centerY = sumY / corners[i].size();
+			Point marker_center = Point(centerX - 30, centerY);
+			putText(frame, "ID = " + to_string(id), marker_center, FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255, 0, 0), 2);
+			drawContours(frame, vector<vector<Point>>{corners[i]}, -1, Scalar(0, 255, 0), 5, LINE_AA);
 		}
-		imshow("THRESHOLD", thresh);
+		
+		result_matrix.clear();
+		
+		
+		
 		/*Poner texto en imagen*/
-		string letrero = "Objetos: ";// + to_string(total);
-		putText(frame, letrero, Point(10, 150), FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2);
+		//string letrero = "Objetos: ";// + to_string(total);
+		//putText(frame, letrero, Point(10, 150), FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2);
+		
 		// Obtener FPS
 		auto end = chrono::steady_clock::now();
 		double milliseconds = chrono::duration_cast<chrono::milliseconds>(end - start).count();
@@ -433,7 +368,7 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		imshow("Video", frame);
 		//Se espera 20 ms
 		pressedKey = waitKey(40);
-
+		
 		//Presiona ESC en el teclado para salir
 		if (pressedKey == TECLA_ESCAPE) {
 			break;
@@ -442,13 +377,32 @@ void deteccion(String ruta_video, String ruta_fichero) {
 			dibujo++;
 			if (dibujo == 1)
 				//dibujoCubo();
+				cout << dibujo << endl;
 				if (dibujo == 2) {
 					//dibujoPiramide();
 					dibujo = 0;
+
 				}
 		}
+
 	}
 	cout << "Veces que han detectado mas de 1 contorno: " << error << endl;
+	cout << "Veces que el id es incorrecto " << error_id << endl;
+	cout << "Veces que ha detectado bien la imagen " << correcta_teccion << endl;
+	//int count_matrix =0;
+	for (int i = 0; i < aruco_images_matrixs.size(); i++) {
+		for (int j = 0; j < aruco_images_matrixs[i].size(); j++) {
+			for (int k = 0; k < aruco_images_matrixs[i][j].size(); k++) {
+				//int element = aruco_images_matrixs[i][j][k];
+				//cout << element << " ";
+			}
+			//cout << endl ;
+		}
+		//cout << endl << endl ;
+		//count_matrix++;
+	}
+	//cout << count_matrix;
+	
 	//Liberar el objeto videoCapture
 	captura.release();
 	//Destruir todas las ventanas

@@ -231,8 +231,8 @@ vector<Point2f> ordenarPuntos_f(vector<Point2f> approx) {
 void deteccion(String ruta_video, String ruta_fichero) {
 	/*Variables*/
 	//Crear el objeto de tipo VideoCapture
-	VideoCapture captura = VideoCapture(ruta_video);
-	//VideoCapture captura = VideoCapture(CAMARA_0);
+	//VideoCapture captura = VideoCapture(ruta_video);
+	VideoCapture captura = VideoCapture(CAMARA_0);
 	
 	//Frames
 	Mat frame;
@@ -285,6 +285,7 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		//Umbralización para binarizar la imagen
 		adaptiveThreshold(equalized, thresh,
 			255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 21, 3);
+		imshow("Thresh", thresh);
 		//Encontrar contornos
 		Mat contour_image = thresh.clone();
 		vector<vector<Point>> contours;
@@ -295,18 +296,22 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		//Inicializa un vector para almacenar las esquinas
 		vector<vector<Point> > corners; //las esquinas de todos los marcadores
 		vector<vector<Point2f> > corners_f; //las esquinas de todos los marcadores
-		
-		//Cuantos contornos hay
-		/////////////////////////
-		//vector<Point3f> axis;
-		//axis.push_back(cv::Point3f(3, 0, 0));
-		//axis.push_back(cv::Point3f(0, 3, 0));
-		//axis.push_back(cv::Point3f(0, 0, -3));
-		/////////////////////////
+		//Corregir esquinas
+		vector<vector<Point> > corrected_corners; //las esquinas de todos los marcadores
+		vector<vector<Point2f> > corrected_corners_f; //las esquinas de todos los marcadores
+		//Cuando el tamaño del marcador es 4x4, el tamaño incluyendo el borde negro es 6x6
+		//Si el ancho de píxel de una celda se establece en 10 al dividir la imagen en una cuadrícula en un paso posterior
+		//La longitud de un lado de la imagen del marcador es 60	
+		vector<Point2f> square_points;
+		int marker_image_side_length = 60;
+		square_points.push_back(Point2f(0, 0));
+		square_points.push_back(Point2f(marker_image_side_length - 1, 0));
+		square_points.push_back(Point2f(marker_image_side_length - 1, marker_image_side_length - 1));
+		square_points.push_back(Point2f(0, marker_image_side_length - 1));
 
 		for (size_t i = 0; i < contours.size(); i++) {
 			double area = contourArea(contours[i]);
-			if (area > 2700) {
+			if ((area > 1700) && (area > 3700)) {
 				// Perimetro
 				double peri = arcLength(contours[i], true); 
 				//Aproximacion del contorno
@@ -321,46 +326,43 @@ void deteccion(String ruta_video, String ruta_fichero) {
 			}
 		}
 		
-		
+	
+		//cout << "Esquinas" << corners.size() << endl;
+		//cout << "Esquinas flotantes" << corners_f.size() << endl;
 
-		vector<Point2f> square_points;
-		
-		//Cuando el tamaño del marcador es 4x4, el tamaño incluyendo el borde negro es 6x6
-		//Si el ancho de píxel de una celda se establece en 10 al dividir la imagen en una cuadrícula en un paso posterior
-		//La longitud de un lado de la imagen del marcador es 60	
-		int marker_image_side_length = 60; 
-		square_points.push_back(Point2f(0, 0));
-		square_points.push_back(Point2f(marker_image_side_length - 1, 0));
-		square_points.push_back(Point2f(marker_image_side_length - 1, marker_image_side_length - 1));
-		square_points.push_back(Point2f(0, marker_image_side_length - 1));
-		
-		Mat marker_image;
-		vector <vector<int>> result_matrix(0); // Inicializar con ceros
-		for (int i = 0; i < corners_f.size(); i++)
+		vector<Mat> result_markers(corners.size());
+		vector<int> result_ids;
+		vector<vector<vector<int>>> result_matrixs; 
+		for (int i = 0; i < corners.size(); i++)
 		{
+			Mat result_marker;
+			vector<vector<int>>result_matrix;
 			vector<Point2f> m = corners_f[i];
+
 			//Obtenga una matriz de transformación de perspectiva para transformar el marcador en un rectángulo.
 			Mat PerspectiveTransformMatrix = getPerspectiveTransform(m, square_points);
+			
 			//Aplicar transformación de perspectiva. 
-			warpPerspective(gray, marker_image, PerspectiveTransformMatrix,
+			warpPerspective(gray, result_marker, PerspectiveTransformMatrix,
 				Size(marker_image_side_length, marker_image_side_length));
+			
 			//Aplicar la binarización por el método otsu.
-			threshold(marker_image, marker_image, 127, 255, THRESH_BINARY | THRESH_OTSU);
+			threshold(result_marker, result_marker, 127, 255, THRESH_BINARY | THRESH_OTSU);
 			// Definimos el kernel
 			Mat kernel = Mat::ones(6, 6, CV_8UC1);
 			// Aplicamos la operación de erosión
-			erode(marker_image, marker_image, kernel);
+			erode(result_marker, result_marker, kernel);
+
 			//El tamaño del marcador es 4, y el tamaño incluyendo el borde negro es 6
-			int cellSize = marker_image.rows / 6;
-			imshow("result", marker_image);
-			vector <int> result_vector(0); // Inicializar con ceros
+			int cellSize = result_marker.rows / 6;
+			vector <int> result_vector;
 			for (int y = 0; y < 6; y++)
 			{
 				for (int x = 0; x < 6; x++) //+= inc)
 				{
 					int cellX = x * cellSize;
 					int cellY = y * cellSize;
-					Mat cell = marker_image(Rect(cellX, cellY, cellSize, cellSize)); //Celdas negras
+					Mat cell = result_marker(Rect(cellX, cellY, cellSize, cellSize)); //Celdas negras
 					
 					int cellValue = cv::sum(cell)[0]; // suma de los valores de píxeles en la celda
 					int msbValue = (cellValue >> 7) & 1; // valor del bit más significativo
@@ -369,16 +371,48 @@ void deteccion(String ruta_video, String ruta_fichero) {
 					
 				}
 				result_matrix.push_back(result_vector);
-				
 				result_vector.clear();
 			}
-
+			result_matrixs.push_back(result_matrix);
+			result_markers.push_back(result_marker);
 			result_matrix = bordesNegros(result_matrix);
 			int id = determinarID(aruco_images_matrixs, result_matrix);
 			cout << "ID = " << id  <<endl;
-			if (id == -1) {
-				break;
+			
+			if (id != -1) {
+				corrected_corners.push_back(corners[i]);
+				result_ids.push_back(id);
+
 			}
+			result_matrix.clear();
+		}
+		
+		for (int i=0; i<corrected_corners.size(); i++) 
+		{
+			int centerX = 0; int centerY = 0;
+			int sumX = 0; int sumY = 0;
+			for (int j = 0; j < 4; j++) {
+				sumX += corrected_corners[i][j].x;
+				sumY += corrected_corners[i][j].y;
+			}
+			centerX = sumX / corrected_corners[i].size();
+			centerY = sumY / corrected_corners[i].size();
+			Point marker_center = Point(centerX - 30, centerY);
+			drawContours(frame, vector<vector<Point>>{corrected_corners[i]}, -1, Scalar(0, 255, 0), 5, LINE_AA);
+			putText(frame, "ID = " + to_string(result_ids[i]), marker_center, FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255, 0, 0), 2);
+			
+		}
+
+
+		result_matrixs.clear();
+		result_ids.clear();
+		result_markers.clear();
+		/*Poner texto en imagen*/
+		//string letrero = "Objetos: ";// + to_string(total);
+		//putText(frame, letrero, Point(10, 150), FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2);
+		
+
+		/*
 			int centerX = 0; int centerY = 0;
 			int sumX = 0; int sumY = 0;
 			for (int j = 0; j < 4; j++) {
@@ -390,14 +424,15 @@ void deteccion(String ruta_video, String ruta_fichero) {
 			Point marker_center = Point(centerX - 30, centerY);
 			putText(frame, "ID = " + to_string(id), marker_center, FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255, 0, 0), 2);
 			drawContours(frame, vector<vector<Point>>{corners[i]}, -1, Scalar(0, 255, 0), 5, LINE_AA);
-		}
-		
-		result_matrix.clear();
+			*/
 
-		/*Poner texto en imagen*/
-		//string letrero = "Objetos: ";// + to_string(total);
-		//putText(frame, letrero, Point(10, 150), FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2);
-		
+
+
+
+
+
+
+
 		// Obtener FPS
 		auto end = chrono::steady_clock::now();
 		double milliseconds = chrono::duration_cast<chrono::milliseconds>(end - start).count();
@@ -452,6 +487,7 @@ void deteccion(String ruta_video, String ruta_fichero) {
 	destroyAllWindows();
 
 }
+
 
 
 

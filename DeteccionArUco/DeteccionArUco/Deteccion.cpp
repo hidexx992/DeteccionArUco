@@ -688,8 +688,8 @@ void deteccion(String ruta_video, String ruta_fichero) {
 				// Convertir el vector de puntos en un vector de puntos flotantes
 				//vector<Point2f> puntos_flotantes;
 				//cv::Mat(rotated_corners).convertTo(puntos_flotantes, CV_32F);
-				trackPuntos_f(corners_f[i], rotation);
-				trackPuntos(corners[i], rotation);
+				//trackPuntos_f(corners_f[i], rotation);
+				//trackPuntos(corners[i], rotation);
 				corrected_corners.push_back(corners[i]);
 				corrected_corners_f.push_back(corners_f[i]);
 				result_ids.push_back(id);

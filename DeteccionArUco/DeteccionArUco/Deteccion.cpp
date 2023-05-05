@@ -1,3 +1,7 @@
+#include <iostream>
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <time.h>
 #include <fstream>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/calib3d.hpp>
@@ -5,23 +9,16 @@
 #define TECLA_a 97 
 #define TECLA_A 65 
 #define CAMARA_0 0
-const int n_markers = 10;
 
+const int n_markers = 10;
 using namespace cv;
 using namespace std;
 
-#include <iostream>
-#include <fstream>
-
-using namespace std;
-
-
-
+// Ordenar en sentido contrario a las agujas del reloj (Puntos entreros)
 vector<Point> ordenarPuntos(vector<Point> approx) {
 	vector<Point> points; //Puntos
 	for (int j = 0; j < 4; j++)
-		points.push_back(Point(approx[j].x, approx[j].y));
-	// Ordenar en sentido contrario a las agujas del reloj
+		points.push_back(Point(approx[j].x, approx[j].y));	
 	Point v1 = points[1] - points[0];
 	Point v2 = points[2] - points[0];
 	double o = (v1.x * v2.y) - (v1.y * v2.x);
@@ -30,6 +27,7 @@ vector<Point> ordenarPuntos(vector<Point> approx) {
 	return points;
 }
 
+// Ordenar en sentido contrario a las agujas del reloj (Puntos flotantes)
 vector<Point2f> ordenarPuntos_f(vector<Point2f> approx) {
 	vector<Point2f> points; //Puntos
 	for (int j = 0; j < 4; j++)
@@ -43,83 +41,9 @@ vector<Point2f> ordenarPuntos_f(vector<Point2f> approx) {
 	return points;
 }
 
-//No funciona
-void trackPuntos(vector<Point>& corner, int rotation) {
-	switch (rotation) {
-	case(1):
-		swap(corner[0], corner[1]); //0 -> 1
-		swap(corner[0], corner[2]);	//2 -> 3
-		swap(corner[0], corner[3]);	//0 -> 2
-		break;
-
-	case(2):
-		swap(corner[0], corner[2]); //0 -> 2
-		swap(corner[1], corner[3]);	//1 -> 3
-		break;
-
-	case(3):
-		swap(corner[0], corner[3]);
-		swap(corner[1], corner[3]);
-		swap(corner[2], corner[3]);
-		break;
-	}
-
-}
-
-//No funciona
-void trackPuntos_f(vector<Point2f> & corner, int rotation) {
-	switch (rotation) {
-	case(1):
-		swap(corner[0], corner[1]); //0 -> 1
-		swap(corner[0], corner[2]);	//2 -> 3
-		swap(corner[0], corner[3]);	//0 -> 2
-		break;
-
-	case(2):
-		swap(corner[0], corner[2]); //0 -> 2
-		swap(corner[1], corner[3]);	//1 -> 3
-		break;
-
-	case(3):
-		swap(corner[0], corner[3]);//0->3
-		swap(corner[1], corner[3]);
-		swap(corner[2], corner[3]);
-		break;
-	default:
-		break;
-	}
-}
 
 
 
-
-void drawCube(Mat& img, vector<Point2f>& corners, vector<Point2f>& imgpts) {
-	imgpts = Mat(imgpts).reshape(2);
-	vector<vector<Point>> contour = { vector<Point>{imgpts[0], imgpts[1], imgpts[2], imgpts[3]} };
-	drawContours(img, contour, 0, Scalar(0, 255, 0), 3);
-	for (int i = 0; i < 4; i++) {
-		line(img, imgpts[i], imgpts[(i + 4) % 8], Scalar(255), 3);
-	}
-	contour = { vector<Point>{imgpts[4], imgpts[5], imgpts[6], imgpts[7]} };
-	drawContours(img, contour, 0, Scalar(0, 0, 255), 3);
-}
-
-void cargar_kps_descs(vector<vector<KeyPoint>> & keypointsRefs, vector<Mat> & descriptorsRefs) {
-	keypointsRefs.resize(10);
-	descriptorsRefs.resize(10);
-	// Detección de características y obtención de descriptores
-	Ptr<Feature2D> detector = AKAZE::create();
-	for (int i = 0; i < 10; i++) {
-		string filename = "./imagenes/MarcadoresAruco/4x4_1000-";
-		filename += to_string(i);
-		filename += ".png";
-		Mat aruco_marker = imread(filename, IMREAD_GRAYSCALE);
-		resize(aruco_marker, aruco_marker,Size(), 0.5, 0.5, INTER_AREA);
-		detector->detectAndCompute(aruco_marker, Mat(), keypointsRefs[i], descriptorsRefs[i]);
-	}
-
-	
-}
 
 vector<Mat> cargarImagenes() {
 	vector<Mat> aruco_images;
@@ -300,39 +224,8 @@ void getCamMatrix_and_distCoeff(String ruta_fichero, Mat& camera_matrix_m, Mat& 
 	camera_matrix_m = k.clone();
 	coeff_dist_m = dc.clone();
 }
-void sortCorners(vector<Point2f>& corners) {
-	vector<Point2f> top, bottom;
-	Point2f center(0, 0);
 
-	// Encuentra el centroide del rectángulo
-	for (int i = 0; i < corners.size(); i++) {
-		center += corners[i];
-	}
-	center *= (1. / corners.size());
 
-	// Separa las esquinas superiores e inferiores basándose en su posición relativa al centroide
-	for (int i = 0; i < corners.size(); i++) {
-		if (corners[i].y < center.y)
-			top.push_back(corners[i]);
-		else
-			bottom.push_back(corners[i]);
-	}
-
-	// Ordena las esquinas superiores e inferiores por coordenadas x
-	sort(top.begin(), top.end(), [](Point2f a, Point2f b) { return a.x < b.x; });
-	sort(bottom.begin(), bottom.end(), [](Point2f a, Point2f b) { return a.x < b.x; });
-
-	// Ordena las esquinas en sentido horario o antihorario, dependiendo de la ubicación de la esquina superior izquierda
-	if (top.size() == 2 && bottom.size() == 2) {
-		if (top[1].x < bottom[0].x)
-			swap(top[1], bottom[0]);
-		corners.clear();
-		corners.push_back(top[0]);
-		corners.push_back(top[1]);
-		corners.push_back(bottom[1]);
-		corners.push_back(bottom[0]);
-	}
-}
 
 vector<Point2f> refinedCorners(Mat descsFrame, Mat descsRef, vector<KeyPoint> kpsFrame, vector<KeyPoint> kpsRef, Mat aruco_img) {
 	resize(aruco_img, aruco_img, Size(), 0.5, 0.5, INTER_AREA);
@@ -395,7 +288,6 @@ void deteccion(String ruta_video, String ruta_fichero) {
 	//Crear el objeto de tipo VideoCapture
 	VideoCapture captura = VideoCapture(ruta_video);
 	//VideoCapture captura = VideoCapture(CAMARA_0);
-
 	//Frames
 	Mat frame;
 	//Tecla presionada
@@ -407,17 +299,11 @@ void deteccion(String ruta_video, String ruta_fichero) {
 	aruco_images = cargarImagenes();
 	/*Generar matrices binarias de las imagenes*/
 	vector <vector<vector<int>>> aruco_images_matrixs = generarMatricesImagenes(aruco_images);
-	/*Obtener matriz de cámara y coeficientes de */
+	/*Obtener matriz de cámara y coeficientes de de distorsión*/
 	Mat cameraMatrix, distCoeffs;
 	getCamMatrix_and_distCoeff(ruta_fichero, cameraMatrix, distCoeffs);
 	
-	//Descriptores y keypoints
-	//vector<vector<KeyPoint>> keypointsRefs;
-	//vector<Mat> descriptorsRefs;
-	//cargar_kps_descs(keypointsRefs, descriptorsRefs);
-	
-
-	vector<Point2f> aruco_corners
+	vector<Point> aruco_corners
 	{
 		Point(0, 0),
 		Point(0, 591),
@@ -425,8 +311,6 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		Point(591, 0)
 	};
 		 
-		
-
 	vector<Point2f> aruco_corners_f
 	{
 		Point2f(0, 0),
@@ -435,37 +319,30 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		Point2f(591, 0) };
 
 	vector<Point3f> corners_3d;
-	//corners_3d.push_back(Point3f(0, 10, 0));
-	//corners_3d.push_back(Point3f(0, 0, 0));
-	//corners_3d.push_back(Point3f(10, 0, 0));
-	//corners_3d.push_back(Point3f(10, 10, 0));
 	corners_3d.push_back(Point3f(-5, 5, 0));
 	corners_3d.push_back(Point3f(5, 5, 0));
 	corners_3d.push_back(Point3f(5, -5, 0));
 	corners_3d.push_back(Point3f(-5, -5, 0));
 
 	vector<Point3f> axis_cube{ //Dibujo cubo
-		
-		Point3f(0, 0, 5),
-		Point3f(0, 5, 5),
-		Point3f(5, 5, 5),
-		Point3f(5, 0, 5),
-		Point3f(0, 0, 0),
-		Point3f(0, 5, 0),
-		Point3f(5, 5, 0),
-		Point3f(5, 0, 0)
-		
-		/*
-		Point3f(-5,-5, 5),
-		Point3f(-5, 5, 5),
-		Point3f(5, 5, 5),
-		Point3f(5, -5, 5),
-
-		Point3f(-5, -5, 0),
-		Point3f(-5, 5, 0),
-		Point3f(5, 5, 0),
-		Point3f(5, -5, 0)*/
+		Point3f(-5, -5, 8),  // esquina inferior izquierda frontal
+		Point3f(-5, 5, 8),   // esquina superior izquierda frontal
+		Point3f(5, 5, 8),    // esquina superior derecha frontal
+		Point3f(5, -5, 8),   // esquina inferior derecha frontal
+		Point3f(-5, -5, 0),  // esquina inferior izquierda trasera
+		Point3f(-5, 5, 0),   // esquina superior izquierda trasera
+		Point3f(5, 5, 0),    // esquina superior derecha trasera
+		Point3f(5, -5, 0)    // esquina inferior derecha trasera
 	};
+
+	vector<Point3f> axis_pyramid{
+		Point3f(5, 5, 0),
+		Point3f(5, -5, 0),
+		Point3f(5, -5, 5),
+		Point3f(5, 5, 5),
+		Point3f(0, 0, 2.5)
+	};
+
 
 
 	// Set coordinate system
@@ -498,7 +375,8 @@ void deteccion(String ruta_video, String ruta_fichero) {
 	int correcta_teccion = 0;
 	int error_id = 0;
 
-
+	bool drawing_cube = false;
+	bool drawing_pyramid = false;
 	while (1) {
 		//Se lee el video imagen a imagen
 		captura.read(frame); //capture >> frame;
@@ -512,90 +390,72 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		cvtColor(frame, gray, COLOR_BGR2GRAY);
 		//Filtro Gaussiano
 		GaussianBlur(gray, gray, Size(3, 3), 0, 0);
-		namedWindow("Escala de Grises con filtro", WINDOW_AUTOSIZE);
-		imshow("Escala de Grises con filtro", gray);
-		//Amplitud de la escala
-		Mat thresh, equalized;
-		equalizeHist(gray, equalized);
 		//Umbralización para binarizar la imagen
-		adaptiveThreshold(equalized, thresh,
+		Mat thresh;
+		adaptiveThreshold(gray, thresh,
 			255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV, 21, 3);
-		imshow("Thresh", thresh);
-		//Encontrar contornos
-		Mat contour_image = thresh.clone();
-		vector<vector<Point>> contours;
-		findContours(contour_image, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
-		//Aproximar el contorno
-		vector<Point2f> approx_f; //Las esquinas
-		vector<Point> approx;     //Esquinas  
+		
 		//Inicializa un vector para almacenar las esquinas
-		vector<vector<Point> > corners; //las esquinas de todos los marcadores
-		vector<vector<Point2f> > corners_f; //las esquinas de todos los marcadores
-		//Corregir esquinas
-		vector<vector<Point> > corrected_corners; //las esquinas de todos los marcadores
-		vector<vector<Point2f> > corrected_corners_f; //las esquinas de todos los marcadores
-		//Cuando el tamaño del marcador es 4x4, el tamaño incluyendo el borde negro es 6x6
-		//Si el ancho de píxel de una celda se establece en 10 al dividir la imagen en una cuadrícula en un paso posterior
-		//La longitud de un lado de la imagen del marcador es 60	
+		vector<vector<Point>> corners; //Enteros
+		vector<vector<Point2f>> corners_f; //Flotantes
+		//Aproximar el contorno
+		vector<Point2f> approx_f; //Enteros
+		vector<Point> approx;     //Flotantes
+		//Guardar esquinas que corresponden a marcadores ArUco
+		vector<vector<Point> > corrected_corners; //Enteros
+		vector<vector<Point2f> > corrected_corners_f; //Flotantes
+		//Definir el tamaño de la imagen que va a contener el marcador que se va a extraer para determinar su id
 		vector<Point2f> square_points;
 		int marker_image_side_length = 60;
 		square_points.push_back(Point2f(0, 0));
 		square_points.push_back(Point2f(marker_image_side_length - 1, 0));
 		square_points.push_back(Point2f(marker_image_side_length - 1, marker_image_side_length - 1));
 		square_points.push_back(Point2f(0, marker_image_side_length - 1));		
-		
-		
-
+		//Encontrar contornos
+		Mat contour_image = thresh.clone();
+		vector<vector<Point>> contours;
+		findContours(contour_image, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+		//Encontrar las esquinas que nos interesan analizar
 		for (size_t i = 0; i < contours.size(); i++) {
 			double area = contourArea(contours[i]);
-			if ((area > 1700) && (area > 3700)) {
-				// Perimetro
+			if (area > 2300) {
 				double peri = arcLength(contours[i], true); 
 				//Aproximacion del contorno
 				approxPolyDP(contours[i], approx_f, 0.02 * peri, true);
 				approxPolyDP(contours[i], approx, 0.02 * peri, true);
-				// Si el polígono tiene cuatro lados y es convexo, entonces es un cuadrado
+				//Si el polígono tiene cuatro lados y es convexo, entonces es un cuadrado
 				if ((approx_f.size() == 4) && (isContourConvex(approx) == true))
 				{
-
 					corners.push_back(ordenarPuntos(approx));
 					corners_f.push_back(ordenarPuntos_f(approx_f));
-					
-					//corners.push_back(approx);
-					//corners_f.push_back(approx_f));
-					
-
 				}
 			}
 		}
-		
-	
-		//cout << "Esquinas" << corners.size() << endl;
-		//cout << "Esquinas flotantes" << corners_f.size() << endl;
-
-		vector<Mat> result_markers(corners.size());
+		//Vector de objetos tipos Mat que contienen los marcadores resultantes
+		vector<Mat> result_markers;
+		//Vector que guarda los id de los marcadores
 		vector<int> result_ids;
+		//Vector que guarda las matrices de los marcadores 
 		vector<vector<vector<int>>> result_matrixs; 
+		//Vector que guarda las rotaciones
+		vector<int> rotations;
 		for (int i = 0; i < corners.size(); i++)
 		{
 			Mat result_marker;
 			vector<vector<int>>result_matrix;
 			vector<Point2f> m = corners_f[i];
-
-			//Obtenga una matriz de transformación de perspectiva para transformar el marcador en un rectángulo.
-			Mat PerspectiveTransformMatrix = getPerspectiveTransform(m, square_points);
-			
+			//Calcular la homografía entre el marcador y el cuadrado de referencia
+			Mat H = findHomography(corners_f[i], square_points);
 			//Aplicar transformación de perspectiva. 
-			warpPerspective(gray, result_marker, PerspectiveTransformMatrix,
+			warpPerspective(gray, result_marker, H,
 				Size(marker_image_side_length, marker_image_side_length));
-			
 			//Aplicar la binarización por el método otsu.
 			threshold(result_marker, result_marker, 127, 255, THRESH_BINARY | THRESH_OTSU);
-			// Definimos el kernel
+			//Definimos el kernel
 			Mat kernel = Mat::ones(6, 6, CV_8UC1);
-			// Aplicamos la operación de erosión
+			//Aplicamos la operación de erosión
 			erode(result_marker, result_marker, kernel);
-
+			rotate(result_marker, result_marker, cv::ROTATE_90_CLOCKWISE);
 			//El tamaño del marcador es 4, y el tamaño incluyendo el borde negro es 6
 			int cellSize = result_marker.rows / 6;
 			vector <int> result_vector;
@@ -606,13 +466,10 @@ void deteccion(String ruta_video, String ruta_fichero) {
 				{
 					int cellX = x * cellSize;
 					int cellY = y * cellSize;
-					Mat cell = result_marker(Rect(cellX, cellY, cellSize, cellSize)); //Celdas negras
-					
-					int cellValue = cv::sum(cell)[0]; // suma de los valores de píxeles en la celda
-					int msbValue = (cellValue >> 7) & 1; // valor del bit más significativo
-					result_vector.push_back(msbValue);					
-					imshow("Celda", cell);
-					
+					Mat cell = result_marker(Rect(cellX, cellY, cellSize, cellSize)); //Celda
+					int cellValue = cv::sum(cell)[0];		//suma de los valores de píxeles en la celda
+					int msbValue = (cellValue >> 7) & 1;	//valor del bit más significativo
+					result_vector.push_back(msbValue);						
 				}
 				result_matrix.push_back(result_vector);
 				result_vector.clear();
@@ -621,85 +478,27 @@ void deteccion(String ruta_video, String ruta_fichero) {
 			result_markers.push_back(result_marker);
 			result_matrix = bordesNegros(result_matrix);
 			int id = determinarID(aruco_images_matrixs, result_matrix, rotation);
+			rotations.push_back(rotation);
 			cout << "ID = " << id  <<endl;
-			
+			imshow("res", result_marker);
 
 			if (id != -1) {
-				
-
-				//vector<KeyPoint> kps;
-				//Mat descs;
-				//Ptr<Feature2D> detector = AKAZE::create();
-				//Mat img_gray; 
-			    //cvtColor(frame, img_gray, IMREAD_GRAYSCALE);
-				//detector->detectAndCompute(img_gray, Mat(), kps, descs);
-				//cout << descs.size() << endl;
-				//cout << descriptorsRefs[id].size() << endl;
-				
-				//vector<Point2f> ref_corners_f = refinedCorners( descs, descriptorsRefs[id], kps, keypointsRefs[id], aruco_images[id]);
-				
-				//corrected_corners_f.push_back(ref_corners_f);
-				//corrected_corners.push_back(pts2f_to_pts(ref_corners_f));
-				//corrected_corners.push_back(pts2f_to_pts(ref_corners_f));
-				
-				//La homografía es fácilmente con: 
-				// remove perspective
-					
-				// remove perspective
-				/*
-				Mat result_marker; // marker image after removing perspective
-				int resultImgSize = 591;
-				Mat resultMarkerCorners(4, 1, CV_32FC2);
-				resultMarkerCorners.ptr<Point2f>(0)[0] = Point2f(0, 0);
-				resultMarkerCorners.ptr<Point2f>(0)[1] = Point2f((float)resultImgSize - 1, 0);
-				resultMarkerCorners.ptr<Point2f>(0)[2] =
-					Point2f((float)resultImgSize - 1, (float)resultImgSize - 1);
-				resultMarkerCorners.ptr<Point2f>(0)[3] = Point2f(0, (float)resultImgSize - 1);
-				Mat transformation = getPerspectiveTransform(aruco_corners, resultMarkerCorners);
-				warpPerspective(frame, result_marker, transformation, Size(resultImgSize, resultImgSize),
-					INTER_NEAREST);
-				namedWindow("result", WINDOW_AUTOSIZE);
-				imshow("result", result_marker);
-				*/
-
-				//Mat H = findHomography(aruco_corners_f, corners_f[i]);
-				// Usar la función perspectiveTransform() para transformar el punto
-				//vector<Point2f> transf_points;
-				//perspectiveTransform(aruco_corners_f, transf_points, H);
-				// Convertir el Mat a un vector de Point2f
-				//std::vector<cv::Point2f> points;
-				// Crear un Mat de tamaño 2x2 y tipo CV_32FC1
-				
-				//circle(frame, points[0], 5, Scalar(242, 159, 90), -1);
-				//Mat frame_warp;
-				//int frame_warp_size = 60;
-				//Mat transformation = getPerspectiveTransform(corners[i], corners[i]);
-				//warpPerspective(frame, frame_warp, transformation,  Size(frame_warp_size, frame_warp_size), INTER_NEAREST);
-				//imshow("Frame warp", frame_warp);
-				
-
-
-
-				// Convertir Mat a vector de Point
-				//vector<Point> points(mat.rows);
-				//memcpy(points.data(), mat.data, mat.rows * mat.cols * sizeof(int));
-
-				
-				// Convertir el vector de puntos en un vector de puntos flotantes
-				//vector<Point2f> puntos_flotantes;
-				//cv::Mat(rotated_corners).convertTo(puntos_flotantes, CV_32F);
 				//trackPuntos_f(corners_f[i], rotation);
 				//trackPuntos(corners[i], rotation);
+				// Dibujar un círculo rojo de radio 5 píxeles alrededor del punto
+				//cout << rotation << endl;
+				std::rotate(corners_f[i].begin(), corners_f[i].begin() + 4 - rotation, corners_f[i].end());
+				cout << rotation << endl;
+				//cv::circle(frame, corners_f[i][0], 10, cv::Scalar(0, 0, 255), -1);
+				// Mostrar la imagen resultante
 				corrected_corners.push_back(corners[i]);
 				corrected_corners_f.push_back(corners_f[i]);
 				result_ids.push_back(id);
-
 			}
 			result_matrix.clear();
 		}
-		// Calcular homografía entre esquinas del objeto fijo y objeto girado
-	
 
+		//Calcular homografía entre esquinas del objeto fijo y objeto girado
 		for (int i=0; i < corrected_corners.size(); i++) 
 		{
 			int centerX = 0; int centerY = 0;
@@ -713,51 +512,30 @@ void deteccion(String ruta_video, String ruta_fichero) {
 			Point marker_center = Point(centerX - 30, centerY);
 			drawContours(frame, vector<vector<Point>>{corrected_corners[i]}, -1, Scalar(0, 255, 0), 5, LINE_AA);
 			putText(frame, "ID = " + to_string(result_ids[i]), marker_center, FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255, 0, 0), 2);
-			
 		}
 		result_matrixs.clear();
 		result_ids.clear();
 		result_markers.clear();
-
+		
+		
 		if (corrected_corners.size() >= 1){ 
-			
-
 			//std::cout << "Initial cameraMatrix: " << cameraMatrix << std::endl;
 			//std::cout << "rvec: " << rvec << std::endl;
 			//std::cout << "tvec: " << tvec << std::endl;
 			// rvec is 3x1, tvec is 3x1 ?
 			std::vector<cv::Vec3d> rvecs(corrected_corners.size()), tvecs(corrected_corners.size());
+			//for(int i=0;; )
 			solvePnPRansac(corners_3d, corrected_corners_f[0], cameraMatrix, distCoeffs, rvecs.at(0), tvecs.at(0));
 			// Proyectar los puntos del cubo en 3D a la imagen en 2D utilizando projectPoints
 			vector<Point2f>  imPointsProjected;
 			projectPoints(axis, rvecs[0], tvecs[0], cameraMatrix, distCoeffs, imPointsProjected);
-			
-
-			// Dibujar las líneas del cubo en la imagen
-			/////////////////////////////////777
-			/*
-			cv::Scalar green(0, 255, 0);
-			cv::Scalar red(0, 0, 255);
-			Scalar violeta(242, 90, 232);
-			cv::line(frame, imPointsProjected[0], imPointsProjected[1], green, 2);
-			cv::line(frame, imPointsProjected[1], imPointsProjected[2], green, 2);
-			cv::line(frame, imPointsProjected[2], imPointsProjected[3], green, 2);
-			cv::line(frame, imPointsProjected[3], imPointsProjected[0], green, 2);
-			cv::line(frame, imPointsProjected[0], imPointsProjected[4], red, 2);
-			cv::line(frame, imPointsProjected[1], imPointsProjected[5], red, 2);
-			cv::line(frame, imPointsProjected[2], imPointsProjected[6], red, 2);
-			cv::line(frame, imPointsProjected[3], imPointsProjected[7], red, 2);
-			cv::line(frame, imPointsProjected[4], imPointsProjected[5], green, 2);
-			cv::line(frame, imPointsProjected[5], imPointsProjected[6], green, 2);
-			cv::line(frame, imPointsProjected[6], imPointsProjected[7], green, 2);
-			cv::line(frame, imPointsProjected[7], imPointsProjected[4], green, 2);
-			*/
 			//Dibujar ejes
 			ordenarPuntos_f(imPointsProjected);
-			line(frame , imPointsProjected[0], imPointsProjected[1], cv::Scalar(0, 0, 255), 2);    // eje X en rojo
+			line(frame, imPointsProjected[0], imPointsProjected[1], cv::Scalar(0, 0, 255), 2);    // eje X en rojo
 			line(frame, imPointsProjected[0], imPointsProjected[2], cv::Scalar(0, 255, 0), 2);    // eje Y en verde
 			line(frame, imPointsProjected[0], imPointsProjected[3], cv::Scalar(255, 0, 0), 2);    // eje Z en azul
 		}
+	
 
 		// Obtener FPS
 		auto end = chrono::steady_clock::now();
@@ -766,34 +544,117 @@ void deteccion(String ruta_video, String ruta_fichero) {
 		fps = 1.0 / (milliseconds / 1000.0);
 		string fps_text = "FPS: " + to_string(fps);
 		putText(frame, fps_text, Point(10, 20), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255, 0, 0), 2);
-		//Mostrar frame
-		//Se crea un lienzo donde mostrar imagenes
-		namedWindow("Video", WINDOW_AUTOSIZE);
-		imshow("Video", frame);
-		//Se espera 20 ms
-		pressedKey = waitKey(40);
+		
+		//Dibujar cubo
+		if (drawing_cube)	
+		{
+			if (corrected_corners.size() >= 1)
+			{
+				std::vector<cv::Vec3d> rvecs(corrected_corners.size()), tvecs(corrected_corners.size());
+				vector<vector<Point2f>>  imPointsProjected(corrected_corners.size());
+				for (int i = 0; i < corrected_corners.size(); i++) 
+				{
+					solvePnPRansac(corners_3d, corrected_corners_f[i], cameraMatrix, distCoeffs, rvecs.at(i), tvecs.at(i));
+					//Proyectar los puntos del cubo en 3D a la imagen en 2D utilizando projectPoints
+					projectPoints(axis_cube, rvecs[i], tvecs[i], cameraMatrix, distCoeffs, imPointsProjected[i]);
+					//Dibujar las líneas del cubo en la imagen
+					Scalar green(0, 255, 0);
+					Scalar red(0, 0, 255);
+					Scalar violeta(242, 90, 232);
+					cv::line(frame, imPointsProjected[i][0], imPointsProjected[i][1], violeta, 2);
+					cv::line(frame, imPointsProjected[i][1], imPointsProjected[i][2], violeta, 2);
+					cv::line(frame, imPointsProjected[i][2], imPointsProjected[i][3], violeta, 2);
+					cv::line(frame, imPointsProjected[i][3], imPointsProjected[i][0], violeta, 2);
+					cv::line(frame, imPointsProjected[i][0], imPointsProjected[i][4], violeta, 2);
+					cv::line(frame, imPointsProjected[i][1], imPointsProjected[i][5], violeta, 2);
+					cv::line(frame, imPointsProjected[i][2], imPointsProjected[i][6], violeta, 2);
+					cv::line(frame, imPointsProjected[i][3], imPointsProjected[i][7], violeta, 2);
+					cv::line(frame, imPointsProjected[i][4], imPointsProjected[i][5], violeta, 2);
+					cv::line(frame, imPointsProjected[i][5], imPointsProjected[i][6], violeta, 2);
+					cv::line(frame, imPointsProjected[i][6], imPointsProjected[i][7], violeta, 2);
+					cv::line(frame, imPointsProjected[i][7], imPointsProjected[i][4], violeta, 2);
+				}
+			}	
+		}
+		//Dibujar pirámide
+		if (drawing_pyramid)
+		{
+			if (corrected_corners.size() >= 1)
+			{
+				std::vector<cv::Vec3d> rvecs(corrected_corners.size()), tvecs(corrected_corners.size());
+				vector<vector<Point2f>>  imPointsProjected(corrected_corners.size());
+				for (int i = 0; i < corrected_corners.size(); i++) 
+				{
+					solvePnPRansac(corners_3d, corrected_corners_f[i], cameraMatrix, distCoeffs, rvecs.at(i), tvecs.at(i));
+					//Proyectar los puntos del cubo en 3D a la imagen en 2D utilizando projectPoints
+					projectPoints(axis, rvecs[i], tvecs[i], cameraMatrix, distCoeffs, imPointsProjected[i]); Scalar green(0, 255, 0);
+					ordenarPuntos_f(imPointsProjected[i]);
+					int a1x = (imPointsProjected[i][3].x - imPointsProjected[i][0].x);
+					int a1y = (imPointsProjected[i][3].y - imPointsProjected[i][0].y);
+					Point p1_start = corrected_corners[0][(rotations[0] + 3) % 4];
+					Point p2_start = corrected_corners[0][(rotations[0] + 2) % 4];
+					Point p3_start = (p1_start + corrected_corners[0][(rotations[0] + 1) % 4]) / 2;
+					Point p4_start = (p2_start + corrected_corners[0][(rotations[0] + 0) % 4]) / 2;
+					Point p1_end(p1_start.x + a1x, p1_start.y + a1y);
+					Point p2_end(p2_start.x + a1x, p2_start.y + a1y);
+					Point p3_end(p3_start.x + a1x, p3_start.y + a1y);
+					Point p4_end(p4_start.x + a1x, p4_start.y + a1y);
+					// base piramido
+					Scalar blue(255, 0, 0);
+					line(frame, p1_start, p2_start, blue, 2);
+					line(frame, p1_start, p1_end, blue, 2);
+					line(frame, p2_start, p2_end, blue, 2);
+					line(frame, p1_end, p2_end, blue, 2);
+
+					int center_x = (p3_start.x + p4_start.x) / 2;
+					int center_y = (p3_start.y + p3_end.y) / 2;
+
+					cv::Point tip(center_x, center_y);
+					line(frame, p1_start, tip, blue, 2);
+					line(frame, p1_end, tip, blue, 2);
+					line(frame, p2_start, tip, blue, 2);
+					line(frame, p2_end, tip, blue, 2);
+				}
+			}
+		}
+
 		
 		//Presiona ESC en el teclado para salir
 		if (pressedKey == TECLA_ESCAPE) {
 			break;
 		}
-		if ((pressedKey == TECLA_A) || (pressedKey == TECLA_a)) {
+		if ((pressedKey == TECLA_A) || (pressedKey == TECLA_a))
+		{
 			dibujo++;
-			if (dibujo == 1)
-				//dibujoCubo();
-				cout << dibujo << endl;
-				if (dibujo == 2) {
-					//dibujoPiramide();
-					dibujo = 0;
-
-				}
 		}
+
+		switch (dibujo) {
+		case 0:
+			drawing_cube = false;
+			drawing_pyramid = false;
+			break;
+		case 1:
+			drawing_cube = true;
+			drawing_pyramid = false;
+			break;
+		case 2:
+			drawing_pyramid = true;
+			drawing_cube = false;
+			break;
+		case 3:
+			dibujo = 0;
+			break;
+		}
+		//Se espera 60 ms
+		pressedKey = waitKey(20);
+		//Mostrar frame
+		//Se crea un lienzo donde mostrar imagenes
+		namedWindow("Video", WINDOW_AUTOSIZE);
+		imshow("Video", frame);
 
 	}
 
-	
-
-
+	//VideoWriter writer("nombre_del_archivo.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, size, isColor);
 	cout << "Veces que han detectado mas de 1 contorno: " << error << endl;
 	cout << "Veces que el id es incorrecto " << error_id << endl;
 	cout << "Veces que ha detectado bien la imagen " << correcta_teccion << endl;
@@ -816,10 +677,7 @@ void deteccion(String ruta_video, String ruta_fichero) {
 	//Destruir todas las ventanas
 	destroyAllWindows();
 	
-
-
 }
-
 
 
 
